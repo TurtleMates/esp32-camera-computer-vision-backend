@@ -9,6 +9,8 @@ Serves 4 video stream endpoints from a single FastAPI server:
 
 import cv2
 import numpy as np
+import threading
+import time
 from ultralytics import YOLO
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
@@ -59,6 +61,13 @@ app.add_middleware(
 
 # Load the YOLO model once (shared between human & sign detection)
 model = YOLO(YOLO_MODEL)
+
+# Warmup: run a dummy inference to pre-compile CUDA kernels.
+# Without this, the first real request has a ~2-5s delay.
+print("Warming up YOLO model...")
+_dummy = np.zeros((480, 640, 3), dtype=np.uint8)
+model(_dummy, verbose=False)
+print("Model ready!")
 
 
 # =====================================================================
@@ -169,27 +178,72 @@ def _put_text(frame, text, color):
 
 
 # =====================================================================
-#  Streaming Engine
+#  Shared Camera Reader (single connection to ESP32)
 # =====================================================================
 
-def _stream(processor):
-    """Generic MJPEG stream generator. Takes a processing function."""
-    cap = cv2.VideoCapture(STREAM_URL)
-    if not cap.isOpened():
-        print(f"Error: Could not open stream at {STREAM_URL}")
-        return
-    try:
-        while True:
+class CameraReader:
+    """Reads frames from the ESP32 in a background thread.
+    Only one connection to the camera is ever open, so switching
+    endpoints is instant."""
+
+    def __init__(self, url: str):
+        self.url = url
+        self.frame = None
+        self.lock = threading.Lock()
+        self.running = True
+        self.thread = threading.Thread(target=self._reader, daemon=True)
+        self.thread.start()
+
+    def _reader(self):
+        cap = cv2.VideoCapture(self.url)
+        if not cap.isOpened():
+            print(f"Error: Could not open stream at {self.url}")
+            return
+        while self.running:
             ret, frame = cap.read()
             if not ret:
-                break
+                print("Camera read failed, reconnecting...")
+                cap.release()
+                time.sleep(1)
+                cap = cv2.VideoCapture(self.url)
+                continue
+            with self.lock:
+                self.frame = frame
+        cap.release()
+
+    def get_frame(self):
+        with self.lock:
+            return self.frame.copy() if self.frame is not None else None
+
+    def stop(self):
+        self.running = False
+        self.thread.join(timeout=5)
+
+
+# Start the shared camera reader at startup
+camera = CameraReader(STREAM_URL)
+
+
+def _stream(processor):
+    """Generic MJPEG stream generator. Grabs the latest frame from
+    the shared camera reader and applies the given processor."""
+    try:
+        while True:
+            frame = camera.get_frame()
+            if frame is None:
+                time.sleep(0.05)
+                continue
+            
             result = processor(frame)
             ok, buf = cv2.imencode('.jpg', result)
             if ok:
                 yield (b'--frame\r\n'
                        b'Content-Type: image/jpeg\r\n\r\n' + buf.tobytes() + b'\r\n')
-    finally:
-        cap.release()
+            
+            # Throttle the output stream to ~20 FPS to avoid overwhelming the browser
+            time.sleep(0.05)
+    except GeneratorExit:
+        pass
 
 
 # =====================================================================
