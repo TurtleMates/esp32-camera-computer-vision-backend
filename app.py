@@ -18,7 +18,7 @@ from fastapi.responses import StreamingResponse, HTMLResponse
 import uvicorn
 
 # ── Configuration ────────────────────────────────────────────────────
-STREAM_URL = "http://10.200.7.27/stream"
+STREAM_URL = "http://192.168.137.159/stream"
 PORT = 5000
 
 # YOLO
@@ -81,13 +81,15 @@ def process_raw(frame: np.ndarray) -> np.ndarray:
 
 def process_human(frame: np.ndarray) -> np.ndarray:
     """Detect and segment humans using YOLOv8 (COCO class 0 = person)."""
-    results = model(frame, classes=0, conf=HUMAN_CONF)
+    # Use model.predict to ensure the classes filter is strictly applied
+    results = model.predict(source=frame, classes=[0], conf=HUMAN_CONF, verbose=False)
     return results[0].plot()
 
 
 def process_signs(frame: np.ndarray) -> np.ndarray:
     """Detect road signs using YOLOv8 (class 9 = traffic light, 11 = stop sign)."""
-    results = model(frame, classes=[9, 11], conf=SIGNS_CONF)
+    # Use model.predict to ensure the classes filter is strictly applied
+    results = model.predict(source=frame, classes=[9, 11], conf=SIGNS_CONF, verbose=False)
     return results[0].plot()
 
 
