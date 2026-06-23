@@ -32,7 +32,7 @@ while True:
     cv2.imshow("ESP32 Video Stream", modified_frame)
 
     # Press 'q' on the keyboard to exit the stream
-    if cv2.waitKey(1) & 0xFF == ord('q'):
+    if cv2.waitKey(100) & 0xFF == ord('q'):
         break
 
 # Release the VideoCapture object and close all OpenCV windows

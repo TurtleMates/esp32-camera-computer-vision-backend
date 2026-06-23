@@ -1,4 +1,5 @@
 import cv2
+import time
 from ultralytics import YOLO
 from fastapi import FastAPI
 from fastapi.responses import StreamingResponse
@@ -41,6 +42,9 @@ def generate_frames():
         # Yield the output frame
         yield (b'--frame\r\n'
                b'Content-Type: image/jpeg\r\n\r\n' + frame_bytes + b'\r\n')
+        
+        # Throttle to reduce lag (~10 FPS)
+        time.sleep(0.1)
 
     cap.release()
 

@@ -18,7 +18,7 @@ from fastapi.responses import StreamingResponse, HTMLResponse
 import uvicorn
 
 # ── Configuration ────────────────────────────────────────────────────
-STREAM_URL = "http://192.168.137.159/stream"
+STREAM_URL = "http://192.168.137.75/stream"
 PORT = 5000
 
 # YOLO
@@ -242,8 +242,8 @@ def _stream(processor):
                 yield (b'--frame\r\n'
                        b'Content-Type: image/jpeg\r\n\r\n' + buf.tobytes() + b'\r\n')
             
-            # Throttle the output stream to ~20 FPS to avoid overwhelming the browser
-            time.sleep(0.05)
+            # Throttle the output stream to ~10 FPS to reduce lag
+            time.sleep(0.1)
     except GeneratorExit:
         pass
 
